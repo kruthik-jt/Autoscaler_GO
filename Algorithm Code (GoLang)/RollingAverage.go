@@ -1,0 +1,417 @@
+package main
+
+//Importing important packages.
+import (
+	"context"
+	"flag"
+	"fmt"
+	"math"
+	"os"
+	"strconv"
+	"time"
+
+	//Package v1 contains API types that are common to all versions.
+	//metav1 is a name that has been set to use instead of using the full package name (an import that has a name called aliased import).
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	//Package contains the clientset to access Kubernetes API.
+	"k8s.io/client-go/kubernetes"
+	//Package clientcmd provides one stop shopping for building a working client from a fixed config, from a .kubeconfig file, from command line flags, or from any merged combination.
+	"k8s.io/client-go/tools/clientcmd"
+	//Package has the automatically generated clientset.
+	//again metricsclientset is the name that we will used instead of the full package name.
+	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
+)
+
+//Struct is fields collection for grouping data together. It is used to store all the required measurements that we aquire from all pods through kubectl.
+type measurementPod struct {
+	PodName           string
+	CPU               float64 //CPU Utilization in cores
+	WindowSize        float64
+	TimeStamp         int64
+	CreationTimestamp int64
+	isAccountedFor    bool
+	nPods             int32 //indicates the total number of pods till the current current iteration. It is used for rolling average scaling calculation
+}
+
+//Global Variables
+var minReplica int32 = 1        //MinReplica is the minimum number of running replica in the system. we should have at least one running replica.
+var maxReplica int32 = 10       //MaxReplica is the maximum number of replicas.
+var desiredMetrics float64 = 50 //DesiredMetrics is average CPU Utilization in precentage. The feedback algorithm should scale up and down to maintain our target.
+var requestValue float64 = 200  //Request Value is the minimum amount of resources that containers need.
+var baseMilicore float64 = 1000.0
+var totalCPUIndex [2000]measurementPod //stores the summation of CPU value and number of pods of each scaling decision
+var index int32 = 0                    //starting with 0, index value increments as the new scaling decision taken
+
+//currentMetrics function calculates current metrics by taking:
+//Inputs: CPU Utlization in Nanocore, Number of Running Pods, and Request Value.
+//Output: Current Metrics in precentage.
+func currentMetrics(m [][10]measurementPod, measurementIndex int32, pMeasurementindex int32) float64 {
+	var totalCpu float64 = 0
+	var currMetrics float64 = 0
+	var numPods int32 = 0
+	var overallCPU float64 = 0 //total CPU value considered for the current metrics calculation
+	var totalPods int32 = 0    //total number of pods considered for the current metrics calculation
+
+	//Verify if the last measurement is accounted for in scaling algorithm.
+	// If not, take that into account as well.
+	//The loop start with the last measuremt is accounted and ends at current measurements
+	//so it will take six measurements for 1 min.
+	//previous measurement index initially is 0
+	//measurement index is the current measurement
+	for j := pMeasurementindex; j < measurementIndex+1; j++ {
+		//Another loop to check inside each measurements for the number of running containers
+		for i := 0; i < int(maxReplica); i++ {
+			//before we calculate the total CPU and number of containers.
+			//Check the Pod Name if is not dummy (this means we have a CPU value).
+			//Also check if the measurement is accounted (false).
+			//True --> we take it into account.
+			//False --> we didn't take, so we have to consider it.
+			mustTakeMeasurementIntoAccount := m[j][i].PodName != "dummy" && !m[j][i].isAccountedFor
+			if mustTakeMeasurementIntoAccount {
+				//Calculating the total CPU in cores and containers number.
+				//Then, we set the measurement to True to not retake into account.
+				totalCpu += m[j][i].CPU
+				m[j][i].isAccountedFor = true
+				numPods = numPods + 1
+			}
+		}
+	}
+
+	//The totalCPU value and the numPods from the above calculation is stored in the totalCPUIndex array
+	//We will get the totalCPU and numPods for every 1 min
+	totalCPUIndex[index].CPU = totalCpu
+	totalCPUIndex[index].nPods = numPods
+	//fmt.Println("totalCPUIndex: ", totalCPUIndex)
+
+	//k-> indexValue to 0 //k indicates the current decision
+	// if k= 2, it is decremented to 1 and 0 to consider all three decision values
+	//counter-> 5 to 1 // we are considering latest 5 minutes scaling decision
+	for k, counter := index, 5; k >= 0 && counter > 0; k, counter = k-1, counter-1 {
+		//fmt.Println("counter: ", counter)
+		//fmt.Println("gettingAddedCPu", totalCPUIndex[k].CPU)
+		overallCPU += totalCPUIndex[k].CPU
+		//fmt.Println("overallCPU: ", overallCPU)
+		//fmt.Println("gettingAddedPods", totalCPUIndex[k].nPods)
+		totalPods += totalCPUIndex[k].nPods
+		//fmt.Println("totalPods: ", totalPods)
+	}
+	//fmt.Println("overallCPU: ", overallCPU)
+	//fmt.Println("totalPods: ", totalPods)
+	index += 1 //incrementing index to store next scaling decision values
+
+	//overallCPU is the summation of CPU values of latest 5 minute scaling decisions
+	//Current Metrics in Precentage = (Average CPU Utlization in Milicore) / Request Value * 100 = Total CPU (core) / (request Value * Number of pods )
+	currMetrics = overallCPU * baseMilicore * 100.0 / (requestValue * float64(totalPods))
+	//Printing and returning the current metrics in precentage
+	return currMetrics
+}
+
+//scalingAlgorithm function calculates the Desired Replicas based on Algorithm 1.
+//Input : Current Metrics, Desired Metrics, Current Relicas, and Previous Decision.
+//Output: Desired Replicas and updated Previous Decision.
+func scalingAlgorithm(replicaCount int32, m [][10]measurementPod, measurementIndex int32, pMeasurementindex int32) int32 {
+	var desiredReplicas int32 = 0
+
+	//recal current metrics function to provide current metrics for the current scaling period
+	var currMetrics = currentMetrics(m[:][:], measurementIndex, pMeasurementindex)
+
+	//HPA equation: Ceiling (Current Replicas * Current Metrics / Desired Metrics).
+	desiredReplicas = int32(math.Ceil(float64(replicaCount) * currMetrics / desiredMetrics))
+	//Check policy (minReplica and maxReplica)
+	//After we calculate the desired replicas, we should check the autoscaling policy.
+	//also we should store the prvious decision whether is up or down.
+	//recall decision check function
+	desiredReplicas = getDesiredNumReplica(desiredReplicas, replicaCount)
+	fmt.Println("Desired Replica = ", desiredReplicas, " Current Metrics = ", currMetrics, " Current Replica = ", replicaCount)
+	return desiredReplicas
+}
+
+//Check policy and get the previous decsion
+//After we calculate the desired replicas, we should check the autoscaling policy.
+//Desired Replica cannot be greater than the Max Replica.
+//Desired Replica cannot be less than the Min Replica.
+func getDesiredNumReplica(desiredReplica int32, replicaCount int32) int32 {
+	if desiredReplica > maxReplica {
+		desiredReplica = maxReplica
+	} else if desiredReplica < minReplica {
+		desiredReplica = minReplica
+	}
+	return desiredReplica
+}
+
+//This function is called to check for the difference between desired and current replica count
+//The current replica should be updated in the next time interval.
+//The number of containers should be installed and running.
+//if the current replica is not updated, we should wait until the deployment updated by scale up or down based on the desired replica.
+func PollReplicas(desiredReplicaCount int32, currReplicaCount int32, kube_cs *kubernetes.Clientset) {
+	fmt.Println("THIS WILL SHIFT THE TIME LINE...")
+	for {
+		fmt.Println("Current Replica = ", currReplicaCount, "Desired Replica", desiredReplicaCount)
+		time.Sleep(1 * time.Second)
+		//Updating the current replica in the deployment.
+		phpDeployment, err := kube_cs.AppsV1().Deployments("default").GetScale(context.TODO(), "php-apache", metav1.GetOptions{})
+		if err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+		//current replica count is updated by calling the phpdeployment and checked for the synchronacy
+		currReplicaCount = phpDeployment.Status.Replicas
+		if desiredReplicaCount == currReplicaCount {
+			fmt.Println("System in Sync")
+			return
+		}
+	}
+}
+
+//This function is used to indicate if there is any duplicate value
+//Input: measurement index, current pod name, current metrics time stamp, previous measurement.
+//Output: the container number in the current measurement that has the same pod name and same timestamp.
+func FindPreviousIndexDuplicateContainer(m [][10]measurementPod, index int32, name string, timestamp int64) int32 {
+	//check each container in a measurement
+	for i := 0; i < int(maxReplica); i++ {
+		//if the pod name is equal to prvious name AND if the timestamp is equal to the previous measurement
+		//return the number of container for the next measurement int32(i).
+		mustCheckDuplicateMeasurement := name == m[index-1][i].PodName && int64(m[index-1][i].TimeStamp) == timestamp
+		if mustCheckDuplicateMeasurement {
+			return int32(i)
+		}
+	}
+	//if the values does not match with the previous measurement, return -1
+	return -1
+}
+
+//This function is to get the pods' information form kubelet through the metrics server
+func updateMetricsInArray(m [][10]measurementPod, measurementIndex int32, containerIndex int32,
+	podMetric v1beta1.PodMetrics, container v1beta1.ContainerMetrics, isAccountedFor bool) {
+	//These value we don't have any control
+	//metricTimestamp is timestamp of kubelet (we consider metrics timestamp to be 50 sec.)
+	//CreationTimestamp is the polling time (here is set to be 10 second)
+	m[measurementIndex][containerIndex].PodName = podMetric.ObjectMeta.Name
+	m[measurementIndex][containerIndex].WindowSize = podMetric.Window.Duration.Seconds()
+	m[measurementIndex][containerIndex].TimeStamp = podMetric.Timestamp.Time.Unix()
+	m[measurementIndex][containerIndex].CreationTimestamp = podMetric.CreationTimestamp.Time.Unix()
+	m[measurementIndex][containerIndex].CPU = container.Usage.Cpu().ToDec().AsApproximateFloat64()
+	//We are controlling this value by checking if the provided measurment has been taken into account or not
+	//True: we already take it into account
+	//False: we didn't take it yet. (considering it is not accounted for calculation of CPU)
+	m[measurementIndex][containerIndex].isAccountedFor = isAccountedFor
+}
+
+//This function is to calculate under-provisioning accuracy that allocates the number of missing resources that are required.
+//AND to calculate over-provisioning accuracy that defines the number of unused resources during the time interval.
+func ProvisioningAccuracy(desiredReplicaCount int32, currReplicaCount int32, underProvAccuracy float64, overProvAccuracy float64) (float64, float64) {
+	var deltaTime int32 = 1 //5
+
+	resultUnderAccuracy := math.Max((float64(desiredReplicaCount)-float64(currReplicaCount)), 0) / float64(desiredReplicaCount) * float64(deltaTime)
+	underProvAccuracy = underProvAccuracy + resultUnderAccuracy
+
+	resultOverAccuracy := math.Max((float64(currReplicaCount)-float64(desiredReplicaCount)), 0) / float64(desiredReplicaCount) * float64(deltaTime)
+	overProvAccuracy = overProvAccuracy + resultOverAccuracy
+
+	return underProvAccuracy, overProvAccuracy
+}
+
+func Sgn(a float64) int {
+	switch {
+	case a < 0:
+		return -1
+	case a > 0:
+		return +1
+	}
+	return 0
+}
+
+func ProvisioningTimeshare(desiredReplicaCount int32, currReplicaCount int32, underProvTime float64, overProvTime float64) (float64, float64) {
+	var deltaTime int32 = 1 //5
+
+	under := Sgn(float64(desiredReplicaCount) - float64(currReplicaCount))
+	overProvisioning := Sgn(float64(currReplicaCount) - float64(desiredReplicaCount))
+
+	resultUnderTime := math.Max(float64(under), 0) * float64(deltaTime)
+	underProvTime = underProvTime + resultUnderTime
+
+	resultOverTime := math.Max(float64(overProvisioning), 0) * float64(deltaTime)
+	overProvTime = overProvTime + resultOverTime
+
+	return underProvTime, overProvTime
+}
+
+func main() {
+	arg := os.Args[1:]
+	//command line input
+	//when you run the code, we can indicate the min replica based on the current status
+	//if we initally have 3 pods --> ./podmetrics 3
+	//3 will be the min replica
+	minReplicaArg, err := strconv.Atoi(arg[0])
+
+	//Initalize variables.
+	minReplica = int32(minReplicaArg) //passing command line input to minReplica
+	var measurements [2000][10]measurementPod
+	var replicaCount int32 = minReplica //replicaCount is current min replica
+	var measurementIndex int32 = 0      //Meaurement Index stats with 0 until 2000
+	var containerIndex int32 = 0        //starting with container index = 0 (0--> 9 "maxReplica")
+	var pMeasurementindex int32 = 0     //Represents the number of last accounted measurement
+	var iter int32 = 0
+	var totalExperimentDuration int = 1
+	var underProvAccuracy float64 = 0
+	var overProvAccuracy float64 = 0
+	var underProvTime float64 = 0
+	var overProvTime float64 = 0
+	//var deltaTime int32 = 1
+
+	//Loading kubernetes configuration from a specific location.
+	//Here e.g. the config file in this path "/home/ece792/.kube/config"
+	//Change the file path based on where you store it.
+	//building a working client from a kubeconfig file
+	kubeconfig := flag.String("kubeconfig", "/home/ece792/.kube/config", "location of kubeconfig")
+	//This line is to get kuberenetes config.
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err)
+	}
+	//creating a new Clientset for the kubeconfig file
+	metric_cs, err := metricsclientset.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
+	//creating a new Clientset for the kubeconfig file
+	kube_cs, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
+
+	for {
+		//fmt.Println("\n\nMeasurement # ", measurementIndex)
+		//intitiating podMetrics array to get and store podmetrics data
+		podMetrics, err := metric_cs.MetricsV1beta1().PodMetricses("default").List(context.Background(), (metav1.ListOptions{LabelSelector: "run=php-apache"}))
+		if err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
+		//Iterate over the results found.
+		//fmt.Println("Length of the items in podmetrics ", len(podMetrics.Items))
+		//Initalize the number of container onec we start a new measurment index (here intialize every 10 second)
+		containerIndex = 0
+
+		//Ranging over the each podmetrics container information(podname, windowsize, Creationtimestamp,cpu) and storing it in measurement array
+		for _, podMetric := range podMetrics.Items {
+			//Iterate over container --> you need this line in case you have more than one container.
+			podContainers := podMetric.Containers
+			//number of live containers should equal to length of items in pod metrics
+			var numLiveContainers int32 = int32(len(podMetrics.Items))
+
+			//Creating struct specifying field names (PodName, WindowSize, TimeStamp, CreationTimestamp, and CPU).
+			//Storing struct field names in measurements array. We only store the live or running containers/pods.
+			for _, container := range podContainers {
+				//Considering the first measurement as fresh measurement
+				if measurementIndex == 0 {
+					//Recalling updateMetricsInArray function to get all the pods' information and if the measurement was accounted
+					updateMetricsInArray(measurements[:][:], measurementIndex, containerIndex, podMetric, container, false)
+					//If it is not the first measument check the following
+				} else {
+					//Recall a function to find privous index duplicate container.
+					//for every running container, we check the pod name and time stamp by comparing with the previous measurement.
+					prevDupIndex := FindPreviousIndexDuplicateContainer(measurements[:][:], measurementIndex, podMetric.ObjectMeta.Name, podMetric.Timestamp.Time.Unix())
+					//if the previous duplicate index was grater than -1
+					//this measuremtn is duplicate
+					duplicateMeasurementFound := prevDupIndex > -1
+					if duplicateMeasurementFound {
+						//if we have a duplicate value
+						//If the current measurement is duplicate, the previous measurements are copied into the current measurement and previous measurement is set to true
+						//this is helpful for the next measurements comparision
+						measurements[measurementIndex][containerIndex] = measurements[measurementIndex-1][prevDupIndex]
+						measurements[measurementIndex-1][prevDupIndex].isAccountedFor = true
+						//fmt.Println("Duplicate Value")
+					} else {
+						//if the measurement is a fresh measurement, poll all the pod information.
+						updateMetricsInArray(measurements[:][:], measurementIndex, containerIndex, podMetric, container, false)
+					}
+				}
+				//fmt.Println("m[][]:", measurements[measurementIndex][containerIndex])
+				//Incrementing container index for the next container
+				containerIndex += 1
+			}
+			//set dummy value for the unused containers
+			//dummy containers will be excluded while calculating current metrics
+			for i := numLiveContainers; i < maxReplica; i++ {
+				measurements[measurementIndex][i].PodName = "dummy"
+			}
+		}
+		//Incrementing the iteration number every 10 second
+		iter += 1
+
+		//Podmetrics is pulled for every 10 sec, iter is increased
+		// For every 1 min, the scaling algorithm is called (iter =6)
+		//30 ->5min
+		if iter == 6 {
+			//checking and updating the current number of replicas
+			phpDeployment, err := kube_cs.AppsV1().Deployments("default").GetScale(context.TODO(), "php-apache", metav1.GetOptions{})
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+			//check if the  current replica equalt to the desired replica
+			if replicaCount != phpDeployment.Status.Replicas {
+				currentReplicaCount := phpDeployment.Status.Replicas
+				PollReplicas(replicaCount, currentReplicaCount, kube_cs)
+			}
+
+			//current replica to be used in scaling algorithm
+			replicaCount = phpDeployment.Status.Replicas
+			//Printing the current Replica
+			//fmt.Println("Current Replica = ", replicaCount)
+
+			//Recall the scalingAlgorithm function to calculate the desired replica and updating the previous decision
+			//passing replica count, the measurement array to calculate current metrics
+			//here the desired replica is the current replica
+			replicaCount = scalingAlgorithm(replicaCount, measurements[:][:], measurementIndex, pMeasurementindex)
+			//once we measured the desired replica, set the prvious measurment index to current measuremnt index
+			//in this case, everytime we will check from the last accounted measurment to the current one.
+			pMeasurementindex = measurementIndex
+
+			//Set current replica to use it as an input in the four evaluation metrics
+			currentReplicaCount := phpDeployment.Status.Replicas
+
+			//recall Provisioing function to return the accuracy and timeshare for under- and over-provisioning
+			underProvAccuracy, overProvAccuracy = ProvisioningAccuracy(replicaCount, currentReplicaCount, underProvAccuracy, overProvAccuracy)
+			underProvTime, overProvTime = ProvisioningTimeshare(replicaCount, currentReplicaCount, underProvTime, overProvTime)
+
+			//Calculate under- and over-provisioning accuracy in presentage.
+			underProvAccuracyPercentage := underProvAccuracy * 100 / float64(totalExperimentDuration)
+			overProvAccuracyPercentage := overProvAccuracy * 100 / float64(totalExperimentDuration)
+
+			//Calculate under- and over-provisioning timeshare in presentage.
+			underProvTimePercentage := underProvTime * 100 / float64(totalExperimentDuration)
+			overProvTimePercentage := overProvTime * 100 / float64(totalExperimentDuration)
+
+			//Print all the values to do the evaluation graph.
+			fmt.Println("UnderProvisioingAccuracy ", underProvAccuracyPercentage,
+				"OverProvisioingAccuracy ", overProvAccuracyPercentage,
+				"UnderProvisioingTime", underProvTimePercentage,
+				"OverProvisioingTime", overProvTimePercentage)
+
+			//Setting the number of replicas for the next following time
+			phpDeployment.Spec.Replicas = replicaCount
+
+			//Update the current replica in the deployment
+			kube_cs.AppsV1().Deployments("default").UpdateScale(context.TODO(), "php-apache", phpDeployment, metav1.UpdateOptions{})
+			//reintialize the iteration to 0, to call scaling algorithm after 1 min
+			iter = 0
+
+			//Increament the duration time by 1 if the scaling was every 1 min
+			totalExperimentDuration += 1
+
+			//after printing all the measurement (current replica, desired replica, and current metrics)
+			//sleep for 10 second.
+			time.Sleep(10 * time.Second)
+		} else {
+			//If the iteration is not equal to 6 (we still need to collect measurement before we scale)
+			//sleep for 10 second and recollect pods' information
+			time.Sleep(10 * time.Second)
+		}
+		//increament the measuremnt index.
+		measurementIndex = measurementIndex + 1
+	}
+
+}
