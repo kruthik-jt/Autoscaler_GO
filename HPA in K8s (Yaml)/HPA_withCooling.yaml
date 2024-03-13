@@ -15,4 +15,9 @@ spec:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 50
+        averageUtilization: 50   
+# Adding the below configuration with stabilizationWindowSeconds=300 is same as not having the configuration
+# The default value is 300, Therefore, not adding the configuration at all sets the value as 300 (cooling period)       
+#  behavior:
+#     scaleDown:
+#       stabilizationWindowSeconds: 300

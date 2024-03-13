@@ -37,7 +37,8 @@ In step 3, Each program will print the current container/replica, current CPU ut
 1. Git or copy the yaml file (e.g. HPA_NoCooling.yaml)
 2. Create the HPA autoscaler by running the following command
 ```
-kubectl create -f <HPA_File_Name.yaml> [Use php-apache.yaml]
+kubectl create -f <HPA_File_Name.yaml>
+kubectl create -f php-apache.yaml
 ```
 4. To check the current container/replica, current CPU utilization [%], and desired container/replica, you can run one of these commands. 
 This command prints the current status only once. 

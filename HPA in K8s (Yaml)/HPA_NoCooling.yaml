@@ -16,6 +16,7 @@ spec:
       target:
         type: Utilization
         averageUtilization: 50
+# Cooling period is set as 0 using stabilizationWindowSeconds        
   behavior:
     scaleDown:
       stabilizationWindowSeconds: 0
