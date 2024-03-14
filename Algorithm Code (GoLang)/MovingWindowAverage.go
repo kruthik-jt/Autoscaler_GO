@@ -40,6 +40,9 @@ var desiredMetrics float64 = 50 //DesiredMetrics is average CPU Utilization in p
 var requestValue float64 = 200  //Request Value is the minimum amount of resources that containers need.
 var baseMilicore float64 = 1000.0
 
+/*Summary:Calculates the current metrics by collecting CPU utilization data from Kubernetes metrics server.
+It calculates the total CPU utilization and number of running pods for each measurement period.*/
+
 //currentMetrics function calculates current metrics by taking:
 //Inputs: CPU Utlization in Nanocore, Number of Running Pods, Average Utilization Array
 //Output: Average Utlization Array for Every 1 min
@@ -82,6 +85,8 @@ func currentMetrics(m [][10]measurementPod, measurementIndex int32, pMeasurement
 	//fmt.Println("totalNumPodsArray [CurrentMetrucs Function] ", totalNumPodsArray[index], "numPods", numPods)
 }
 
+/*Summary: Implements the autoscaling algorithm to determine the desired number of replicas based on current metrics. It calculates the desired replicas using a formula based on current and desired metrics.*/
+
 //scalingAlgorithm function calculates the Desired Replicas based on Algorithm 1.
 //Input : Current Metrics, Desired Metrics, Current Relicas.
 //Output: Desired Replicas.
@@ -112,6 +117,8 @@ func getDesiredNumReplica(desiredReplica int32, replicaCount int32) int32 {
 	return desiredReplica
 }
 
+/*Summary: Polls the current number of replicas in the deployment and waits until it's synchronized with the desired number of replicas.*/
+
 //This function is called to check for the difference between desired and current replica count
 //The current replica should be updated in the next time interval.
 //The number of containers should be installed and running.
@@ -136,6 +143,8 @@ func PollReplicas(desiredReplicaCount int32, currReplicaCount int32, kube_cs *ku
 	}
 }
 
+/*Summary: Searches for duplicate container metrics in the previous measurement to avoid double-counting.*/
+
 //This function is used to indicate if there is any duplicate value
 //Input: measurement index, current pod name, current metrics time stamp, previous measurement.
 //Output: the container number in the current measurement that has the same pod name and same timestamp.
@@ -152,6 +161,8 @@ func FindPreviousIndexDuplicateContainer(m [][10]measurementPod, index int32, na
 	//if the values does not match with the previous measurement, return -1
 	return -1
 }
+
+/*Summary: Updates the metrics array with the latest pod metrics fetched from the Kubernetes metrics server.*/
 
 //This function is to get the pods' information form kubelet through the metrics server
 func updateMetricsInArray(m [][10]measurementPod, measurementIndex int32, containerIndex int32,
@@ -206,6 +217,8 @@ func Sgn(a float64) int {
 	}
 	return 0
 }
+
+/*Summary: Measures the duration of under-provisioning and over-provisioning during the experiment time.*/
 
 //measure the prediction duration when the autoscale system is under-provisioned and over-provisioned, respectively, during the experiment time
 //INPUT: Desired Replica, Current Replica, Previous Under Provisioning Time, and Previous Over Provisioning Time
