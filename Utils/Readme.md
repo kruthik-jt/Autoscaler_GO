@@ -31,7 +31,7 @@ kubectl run -i --tty load-generator --rm --image=jtkruthik99/loadgenerator:lates
 # Note
 1. If you change or edit any of the three file, you should rebuild dockerfile. 
 2. If you load-generator pod is running, you can stop it by delete the pod or (CTRL-C)
-3. Becareful of the dataset style as it might provide you an error if you use another format. 
-4. 123nag is the docker account that we used while implementing this thesis, you can create your own account from (https://docker.io/)
+3. Be careful of the dataset style as it might provide you an error if you use another format. 
+4. jtkruthik99 is the docker account that I used while implementing this thesis, you can create your own account from (https://docker.io/)
 
 
