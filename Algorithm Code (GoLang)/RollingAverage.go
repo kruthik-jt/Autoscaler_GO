@@ -264,7 +264,7 @@ func main() {
 	//Here e.g. the config file in this path "/home/ece792/.kube/config"
 	//Change the file path based on where you store it.
 	//building a working client from a kubeconfig file
-	kubeconfig := flag.String("kubeconfig", "/home/ece792/.kube/config", "location of kubeconfig")
+	kubeconfig := flag.String("kubeconfig", "C:/Users/HP/.kube/config", "location of kubeconfig")
 	//This line is to get kuberenetes config.
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {

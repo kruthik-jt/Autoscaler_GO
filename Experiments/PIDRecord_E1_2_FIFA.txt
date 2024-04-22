@@ -1,0 +1,48 @@
+Desired Replica = 3, Current Metrics = 220.27, Current Replica = 1
+UnderProvisioingAccuracy  66.66666666666666 OverProvisioingAccuracy  0 UnderProvisioingTime 100 OverProvisioingTime 0
+Desired Replica = 4, Current Metrics = 72.17, Current Replica = 3
+UnderProvisioingAccuracy  45.83333333333333 OverProvisioingAccuracy  0 UnderProvisioingTime 100 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 53.95, Current Replica = 4
+UnderProvisioingAccuracy  37.222222222222214 OverProvisioingAccuracy  0 UnderProvisioingTime 100 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 43.14, Current Replica = 5
+UnderProvisioingAccuracy  27.916666666666664 OverProvisioingAccuracy  0 UnderProvisioingTime 75 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 42.11, Current Replica = 5
+UnderProvisioingAccuracy  22.33333333333333 OverProvisioingAccuracy  0 UnderProvisioingTime 60 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 43.08, Current Replica = 5
+UnderProvisioingAccuracy  18.611111111111107 OverProvisioingAccuracy  0 UnderProvisioingTime 50 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 41.09, Current Replica = 5
+UnderProvisioingAccuracy  15.95238095238095 OverProvisioingAccuracy  0 UnderProvisioingTime 42.857142857142854 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 42.11, Current Replica = 5
+UnderProvisioingAccuracy  13.958333333333332 OverProvisioingAccuracy  0 UnderProvisioingTime 37.5 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 42.09, Current Replica = 5
+UnderProvisioingAccuracy  12.407407407407407 OverProvisioingAccuracy  0 UnderProvisioingTime 33.333333333333336 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 43.08, Current Replica = 5
+UnderProvisioingAccuracy  11.166666666666664 OverProvisioingAccuracy  0 UnderProvisioingTime 30 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 41.08, Current Replica = 5
+UnderProvisioingAccuracy  10.15151515151515 OverProvisioingAccuracy  0 UnderProvisioingTime 27.272727272727273 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 41.10, Current Replica = 5
+UnderProvisioingAccuracy  9.305555555555554 OverProvisioingAccuracy  0 UnderProvisioingTime 25 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 42.08, Current Replica = 5
+UnderProvisioingAccuracy  8.58974358974359 OverProvisioingAccuracy  0 UnderProvisioingTime 23.076923076923077 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 41.11, Current Replica = 5
+UnderProvisioingAccuracy  7.976190476190475 OverProvisioingAccuracy  0 UnderProvisioingTime 21.428571428571427 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 42.08, Current Replica = 5
+UnderProvisioingAccuracy  7.444444444444444 OverProvisioingAccuracy  0 UnderProvisioingTime 20 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 41.11, Current Replica = 5
+UnderProvisioingAccuracy  6.979166666666666 OverProvisioingAccuracy  0 UnderProvisioingTime 18.75 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 41.12, Current Replica = 5
+UnderProvisioingAccuracy  6.568627450980391 OverProvisioingAccuracy  0 UnderProvisioingTime 17.647058823529413 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 40.12, Current Replica = 5
+UnderProvisioingAccuracy  6.203703703703703 OverProvisioingAccuracy  0 UnderProvisioingTime 16.666666666666668 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 40.13, Current Replica = 5
+UnderProvisioingAccuracy  5.8771929824561395 OverProvisioingAccuracy  0 UnderProvisioingTime 15.789473684210526 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 41.10, Current Replica = 5
+UnderProvisioingAccuracy  5.583333333333332 OverProvisioingAccuracy  0 UnderProvisioingTime 15 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 39.16, Current Replica = 5
+UnderProvisioingAccuracy  5.317460317460316 OverProvisioingAccuracy  0 UnderProvisioingTime 14.285714285714286 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 41.03, Current Replica = 5
+UnderProvisioingAccuracy  5.075757575757575 OverProvisioingAccuracy  0 UnderProvisioingTime 13.636363636363637 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 39.10, Current Replica = 5
+UnderProvisioingAccuracy  4.855072463768115 OverProvisioingAccuracy  0 UnderProvisioingTime 13.043478260869565 OverProvisioingTime 0
+Desired Replica = 5, Current Metrics = 40.58, Current Replica = 5
+UnderProvisioingAccuracy  4.652777777777777 OverProvisioingAccuracy  0 UnderProvisioingTime 12.5 OverProvisioingTime 0

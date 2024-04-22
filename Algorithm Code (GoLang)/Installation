@@ -1,0 +1,22 @@
+Metrics Server:
+- kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+- kubectl -n kube-system edit deploy metrics-server
+- Add the 'command' from below configuration at metrics-server
+    containers:
+      - args:
+        - --cert-dir=/tmp
+        - --secure-port=4443
+        - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+        - --kubelet-use-node-status-port
+        - --metric-resolution=15s
+        command:
+        - /metrics-server
+        - --kubelet-insecure-tls
+        - --kubelet-preferred-address-types=InternalIP
+
+Grafana:
+- helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+- helm repo update
+- helm install prometheus prometheus-community/kube-prometheus-stack
+- kubectl port-forward deployment/prometheus-grafana 3000
+- kubectl port-forward service/prometheus-kube-prometheus-prometheus 9090

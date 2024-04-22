@@ -85,64 +85,54 @@ func currentMetrics(m [][10]measurementPod, measurementIndex int32, pMeasurement
 //Input : Current Metrics, Desired Metrics, Current Relicas, and Previous Decision.
 //Output: Desired Replicas and updated Previous Decision.
 func scalingAlgorithm(replicaCount int32, m [][10]measurementPod, measurementIndex int32, pMeasurementindex int32, preDecision string) (int32, string) {
-	var desiredReplicas int32 = 0
+	// Define PID controller parameters.
+	Kp := 0.5
+	Ki := 0.01
+	Kd := 0.1
 
-	//recal current metrics function to provide current metrics for the current scaling period
-	var currMetrics = currentMetrics(m[:][:], measurementIndex, pMeasurementindex)
+	// Define desired metrics.
+	desiredMetrics := 50.0 // Set the desired metrics value.
 
-	//If the Current Metrics is greater than Desired Metrics,
-	//this means that we have to scale up to meet our target metrics.
-	mustScaleUP := currMetrics > desiredMetrics
-	mustScaleDown := currMetrics <= desiredMetrics
+	// Define error variables.
+	var integralError float64
+	var prevError float64
 
-	if mustScaleUP {
-		//if previous decision was UP and Current Metrics is greater than Desired Metrics, calculate the HPA equation
-		if preDecision == "UP" {
-			//HPA equation: Ceiling (Current Replicas * Current Metrics / Desired Metrics).
-			desiredReplicas = int32(math.Ceil(float64(replicaCount) * currMetrics / desiredMetrics))
-			//Check policy (minReplica and maxReplica)
-			//After we calculate the desired replicas, we should check the autoscaling policy.
-			//also we should store the prvious decision whether is up or down.
-			//recall decision check function.
-			desiredReplicas = getDesiredNumReplica(desiredReplicas, replicaCount)
-			preDecision = "UP"
-			fmt.Println("Desired Replica = ", desiredReplicas, " Current Metrics = ", currMetrics, " Current Replica = ", replicaCount)
-			return desiredReplicas, preDecision
+	// Calculate the current metrics.
+	currMetrics := currentMetrics(m[:][:], measurementIndex, pMeasurementindex)
 
-			//if previous decision was Down and current metrics is greater than desired metrics, increase by 1
-		} else if preDecision == "DOWN" {
-			desiredReplicas = replicaCount + 1
-			//Check policy and get the previous decsion
-			desiredReplicas = getDesiredNumReplica(desiredReplicas, replicaCount)
-			preDecision = "UP"
-			fmt.Println("Desired Replica = ", desiredReplicas, " Current Metrics = ", currMetrics, " Current Replica = ", replicaCount)
-			return desiredReplicas, preDecision
-		}
-		//If the Current Metrics is less than Desired Metrics, this means that we have to scale down.
-	} else if mustScaleDown {
-		//if previous decision was UP and current metrics is less than desired metrics, decrease the current replica  by 1
-		if preDecision == "UP" {
-			desiredReplicas = replicaCount - 1
-			//Check policy and get the previous decsion
-			desiredReplicas = getDesiredNumReplica(desiredReplicas, replicaCount)
-			preDecision = "DOWN"
-			fmt.Println("Desired Replica = ", desiredReplicas, " Current Metrics = ", currMetrics, " Current Replica = ", replicaCount)
-			return desiredReplicas, preDecision
+	// Calculate the error term.
+	error := desiredMetrics - currMetrics
 
-			//if previous decision was DOWN and current metrics is less than desired metrics, Calculate the HPA
-		} else if preDecision == "DOWN" {
-			//HPA equation: Ceiling (Current Replicas * Current Metrics / Desired Metrics).
-			desiredReplicas = int32(math.Ceil(float64(replicaCount) * currMetrics / desiredMetrics))
-			//Check policy and get the previous decsion
-			desiredReplicas = getDesiredNumReplica(desiredReplicas, replicaCount)
-			preDecision = "DOWN"
-			fmt.Println("Desired Replica = ", desiredReplicas, " Current Metrics = ", currMetrics, " Current Replica = ", replicaCount)
-			return desiredReplicas, preDecision
-		}
+	// Update the integral and derivative errors.
+	integralError += error
+	derivativeError := error - prevError
+
+	// Calculate the control output using PID algorithm.
+	controlOutput := Kp*error + Ki*integralError + Kd*derivativeError
+	controlOutput -= Kd*derivativeError
+
+	// Update the previous error.
+	prevError = error
+
+	// Adjust the desired replicas based on the control output.
+	var desiredReplicas int32
+	desiredReplicas = int32(math.Ceil(float64(replicaCount) * (currMetrics + controlOutput) / desiredMetrics))
+	// Check against autoscaling policy.
+	desiredReplicas = getDesiredNumReplica(desiredReplicas, replicaCount)
+	// Determine the new decision based on the control output.
+	var newDecision string
+	if controlOutput > 0 {
+		newDecision = "UP" // Scale up decision
+	} else if controlOutput < 0 {
+		newDecision = "DOWN" // Scale down decision
+	} else {
+		newDecision = preDecision // Maintain previous decision
 	}
-	fmt.Println("Desired Replica = ", desiredReplicas, " Current Metrics = ", currMetrics, " Current Replica = ", replicaCount)
-	//Everytime we returing the desired Replica and the new decision
-	return desiredReplicas, preDecision
+
+	// Print debugging information.
+	fmt.Printf("Desired Replica = %d, Current Metrics = %.2f, Current Replica = %d\n", desiredReplicas, currMetrics, replicaCount)
+
+	return desiredReplicas, newDecision
 }
 
 //Check policy and get the previous decsion
@@ -221,7 +211,7 @@ func updateMetricsInArray(m [][10]measurementPod, measurementIndex int32, contai
 //INPUT: Desired Replica, Current Replica, Previous Under Provisioning Accuracy, and Previous Over Provisioning Accuracy
 //OUTPUT: Current Under Provisioning Accuracy, and Current Over Provisioning Accuracy
 func ProvisioningAccuracy(desiredReplicaCount int32, currReplicaCount int32, underProvAccuracy float64, overProvAccuracy float64) (float64, float64) {
-	var deltaTime int32 = 2 // 1 for 1 min and 5 for 5 min
+	var deltaTime int32 = 5 // 1 for 1 min and 5 for 5 min
 
 	//Calculate max(desiredReplica-CurrentReplica,0) and then divide by desiredReplica and multiply by delta time.
 	//This is inside the sum
@@ -257,7 +247,7 @@ func Sgn(a float64) int {
 //INPUT: Desired Replica, Current Replica, Previous Under Provisioning Time, and Previous Over Provisioning Time
 //OUTPUT: Current Under Provisioning Time, and Current Over Provisioning Time
 func ProvisioningTimeshare(desiredReplicaCount int32, currReplicaCount int32, underProvTime float64, overProvTime float64) (float64, float64) {
-	var deltaTime int32 = 2 // 1 for 1 min and 5 for 5 min
+	var deltaTime int32 = 5 // 1 for 1 min and 5 for 5 min
 
 	//Recall signum function to calculate the different between desire replica and current replica
 	//UNDER: DesiredReplica - CurrentReplica
@@ -298,7 +288,7 @@ func main() {
 	var preDecision string = "UP"       //initial predecision is set to UP for the first scaling
 	var pMeasurementindex int32 = 0     //Represents the number of last accounted measurement
 	var iter int32 = 0
-	var totalExperimentDuration int = 2
+	var totalExperimentDuration int = 5
 	var underProvAccuracy float64 = 0
 	var overProvAccuracy float64 = 0
 	var underProvTime float64 = 0
@@ -388,7 +378,7 @@ func main() {
 		//Podmetrics is pulled for every 10 sec, iter is increased
 		// For every 1 min, the scaling algorithm is called (iter =6)
 		//30 ->5min
-		if iter == 12 {
+		if iter == 30 {
 			//checking and updating the current number of replicas
 			phpDeployment, err := kube_cs.AppsV1().Deployments("default").GetScale(context.TODO(), "php-apache", metav1.GetOptions{})
 			if err != nil {
@@ -444,7 +434,7 @@ func main() {
 			iter = 0
 
 			//Increament the duration time by 1 if the scaling was every 1 min
-			totalExperimentDuration += 2 //5
+			totalExperimentDuration += 5 //5
 
 			//after printing all the measurement (current replica, desired replica, and current metrics)
 			//sleep for 10 second.
