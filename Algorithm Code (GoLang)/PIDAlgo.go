@@ -211,7 +211,7 @@ func updateMetricsInArray(m [][10]measurementPod, measurementIndex int32, contai
 //INPUT: Desired Replica, Current Replica, Previous Under Provisioning Accuracy, and Previous Over Provisioning Accuracy
 //OUTPUT: Current Under Provisioning Accuracy, and Current Over Provisioning Accuracy
 func ProvisioningAccuracy(desiredReplicaCount int32, currReplicaCount int32, underProvAccuracy float64, overProvAccuracy float64) (float64, float64) {
-	var deltaTime int32 = 5 // 1 for 1 min and 5 for 5 min
+	var deltaTime int32 = 1 // 1 for 1 min and 5 for 5 min
 
 	//Calculate max(desiredReplica-CurrentReplica,0) and then divide by desiredReplica and multiply by delta time.
 	//This is inside the sum
@@ -247,7 +247,7 @@ func Sgn(a float64) int {
 //INPUT: Desired Replica, Current Replica, Previous Under Provisioning Time, and Previous Over Provisioning Time
 //OUTPUT: Current Under Provisioning Time, and Current Over Provisioning Time
 func ProvisioningTimeshare(desiredReplicaCount int32, currReplicaCount int32, underProvTime float64, overProvTime float64) (float64, float64) {
-	var deltaTime int32 = 5 // 1 for 1 min and 5 for 5 min
+	var deltaTime int32 = 1 // 1 for 1 min and 5 for 5 min
 
 	//Recall signum function to calculate the different between desire replica and current replica
 	//UNDER: DesiredReplica - CurrentReplica
@@ -288,7 +288,7 @@ func main() {
 	var preDecision string = "UP"       //initial predecision is set to UP for the first scaling
 	var pMeasurementindex int32 = 0     //Represents the number of last accounted measurement
 	var iter int32 = 0
-	var totalExperimentDuration int = 5
+	var totalExperimentDuration int = 1
 	var underProvAccuracy float64 = 0
 	var overProvAccuracy float64 = 0
 	var underProvTime float64 = 0
@@ -378,7 +378,7 @@ func main() {
 		//Podmetrics is pulled for every 10 sec, iter is increased
 		// For every 1 min, the scaling algorithm is called (iter =6)
 		//30 ->5min
-		if iter == 30 {
+		if iter == 6 {
 			//checking and updating the current number of replicas
 			phpDeployment, err := kube_cs.AppsV1().Deployments("default").GetScale(context.TODO(), "php-apache", metav1.GetOptions{})
 			if err != nil {
@@ -434,7 +434,7 @@ func main() {
 			iter = 0
 
 			//Increament the duration time by 1 if the scaling was every 1 min
-			totalExperimentDuration += 5 //5
+			totalExperimentDuration += 1 //5
 
 			//after printing all the measurement (current replica, desired replica, and current metrics)
 			//sleep for 10 second.
